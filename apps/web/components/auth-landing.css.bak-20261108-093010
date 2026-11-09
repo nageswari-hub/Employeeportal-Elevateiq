@@ -1,0 +1,534 @@
+.landing-root {
+  --or: #ff5a14;
+  --ink: #0b1a50;
+  --mu: #4b5ca6;
+  box-sizing: border-box;
+  font-family: var(--font-poppins), 'Poppins', system-ui, sans-serif;
+  color: #fff;
+  background: #0a3cc0;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 50;
+}
+
+.landing-root *,
+.landing-root *::before,
+.landing-root *::after {
+  box-sizing: border-box;
+}
+
+.landing-root .bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(55% 55% at 28% 112%, rgba(255, 80, 20, 0.85), rgba(255, 70, 20, 0.25) 55%, transparent 75%),
+    radial-gradient(55% 60% at 75% 0%, #1569ff, transparent 70%),
+    radial-gradient(70% 80% at 5% 60%, #03195f, transparent 72%),
+    radial-gradient(40% 50% at 100% 100%, #0a52e0, transparent 70%),
+    linear-gradient(100deg, #062a96, #0a3fbd 45%, #0b50e0);
+}
+
+
+
+.landing-root .fit {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 1024px;
+  height: 576px;
+  margin: -288px 0 0 -512px;
+  transform-origin: 50% 50%;
+}
+
+.landing-root .stage {
+  position: relative;
+  width: 1024px;
+  height: 576px;
+}
+
+.landing-root .a {
+  position: absolute;
+}
+
+.landing-root .logo {
+  left: 78px;
+  top: 49px;
+  width: 176px;
+  display: block;
+  animation: landingFade 0.9s both;
+}
+
+.landing-root .sub {
+  left: 93.3px;
+  top: 94px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 3.08px;
+  margin-right: -3.08px;
+  white-space: nowrap;
+  color: var(--or);
+  animation: landingFade 0.9s 0.1s both;
+}
+
+.landing-root h1 {
+  margin: 0;
+  left: 58px;
+  top: 138px;
+  font-size: 46px;
+  line-height: 42px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+}
+
+.landing-root h1 span {
+  display: block;
+  animation: landingFade 0.8s both;
+}
+
+.landing-root h1 span:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.landing-root h1 span:nth-child(3) {
+  animation-delay: 0.2s;
+  margin-top: 4px;
+  color: var(--or);
+}
+
+.landing-root .ul {
+  left: 58px;
+  top: 270px;
+  width: 200px;
+  height: 14px;
+  overflow: visible;
+}
+
+.landing-root .ul path {
+  fill: none;
+  stroke: var(--or);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 260;
+  stroke-dashoffset: 260;
+  animation: landingDr 1s 0.8s ease-out forwards;
+}
+
+.landing-root .lead {
+  left: 58px;
+  top: 289px;
+  width: 410px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: #e9efff;
+  animation: landingFade 0.9s 0.3s both;
+}
+
+.landing-root .feats {
+  left: 60px;
+  top: 354px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-root .feats li {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 37.67px;
+  font-size: 13.4px;
+  color: #eaf0ff;
+  animation: landingFade 0.7s both;
+  animation-delay: calc(0.45s + var(--i) * 0.08s);
+}
+
+.landing-root .ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 110, 40, 0.85);
+  background: rgba(255, 90, 20, 0.14);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.landing-root .ic svg {
+  width: 15px;
+  height: 15px;
+  stroke: var(--or);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-root .shot {
+  left: 374px;
+  top: 343px;
+  width: 226px;
+  height: 183px;
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  background: url("/assets/laptop.jpg") center/cover;
+  box-shadow: 0 14px 34px rgba(0, 10, 70, 0.45);
+  animation: landingFade 0.9s 0.5s both;
+}
+
+.landing-root .card {
+  left: 645px;
+  top: 80px;
+  width: 342px;
+  height: 444px;
+  border-radius: 26px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 26px 60px rgba(2, 12, 80, 0.4);
+  animation: landingFade 0.9s 0.15s both;
+}
+
+.landing-root .card.cp-card {
+  height: auto;
+  min-height: 444px;
+  padding: 24px 22px 28px;
+  top: 50px;
+}
+
+.landing-root .card .a {
+  left: 0;
+  right: 0;
+}
+
+.landing-root .mail {
+  left: 0;
+  right: 0;
+  top: 12px;
+  margin: 0 auto;
+  display: block;
+  transform: scale(1.16);
+  transform-origin: 50% 0;
+}
+
+.landing-root h2 {
+  margin: 0;
+  top: 96px;
+  text-align: center;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.landing-root .s {
+  top: 133px;
+  margin: 0;
+  padding: 0 34px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--mu);
+}
+
+.landing-root .lb {
+  left: 28px !important;
+  right: auto !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 18px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--ink);
+}
+
+.landing-root .lb svg {
+  width: 11px;
+  height: 11px;
+  stroke: var(--ink);
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-root .fd {
+  left: 26px !important;
+  right: 26px !important;
+  height: 37px;
+}
+
+.landing-root input {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid #e1e7f6;
+  border-radius: 19px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(11, 26, 80, 0.04);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.landing-root input::placeholder {
+  color: #8f9bbd;
+}
+
+.landing-root #pw::placeholder {
+  letter-spacing: 0.06em;
+  color: #6d789c;
+}
+
+.landing-root input:focus {
+  outline: 0;
+  border-color: #1456e8;
+  box-shadow: 0 0 0 4px rgba(20, 86, 232, 0.14);
+}
+
+.landing-root .show {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1456e8;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.landing-root .btn {
+  left: 26px !important;
+  right: 26px !important;
+  top: 333px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: linear-gradient(90deg, #ff5a14, #ff7a1c);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(255, 90, 20, 0.35);
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.landing-root .btn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-20deg);
+  animation: landingSh 4.5s 2s infinite;
+}
+
+.landing-root .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(255, 90, 20, 0.45);
+}
+
+.landing-root .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.landing-root .btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-root .btn:focus-visible,
+.landing-root .show:focus-visible,
+.landing-root .note a:focus-visible {
+  outline: 3px solid rgba(20, 86, 232, 0.5);
+  outline-offset: 2px;
+}
+
+.landing-root .msg {
+  top: 380px;
+  margin: 0;
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 14px;
+  color: #d6361f;
+  min-height: 14px;
+}
+
+.landing-root .note {
+  top: 398px;
+  margin: 0;
+  padding: 0 26px;
+  text-align: center;
+  font-size: 10.2px;
+  line-height: 15px;
+  color: var(--mu);
+}
+
+.landing-root .note a {
+  color: #1456e8;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.landing-root .note a:hover {
+  text-decoration: underline;
+}
+
+.landing-root .shake {
+  animation: landingShk 0.4s;
+}
+
+@keyframes landingFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes landingDr {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes landingSh {
+  0% {
+    left: -60%;
+  }
+  30%, 100% {
+    left: 130%;
+  }
+}
+
+@keyframes landingShk {
+  25% {
+    transform: translateX(-7px);
+  }
+  75% {
+    transform: translateX(7px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-root *,
+  .landing-root *::before,
+  .landing-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* phones: stack */
+.landing-root.mob {
+  overflow-y: auto;
+  height: 100vh;
+  position: relative;
+}
+
+.landing-root.mob .fit {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+  margin: 0;
+  transform: none !important;
+}
+
+.landing-root.mob .stage {
+  width: auto;
+  height: auto;
+  padding: 28px 22px 40px;
+}
+
+.landing-root.mob .a,
+.landing-root.mob .card .a {
+  position: static !important;
+  margin: 0 0 18px !important;
+}
+
+.landing-root.mob .logo {
+  width: 170px;
+}
+
+.landing-root.mob .sub {
+  margin: -14px 0 24px 4px !important;
+}
+
+.landing-root.mob h1 {
+  font-size: 34px;
+  line-height: 36px;
+  white-space: normal;
+}
+
+.landing-root.mob h1 span:nth-child(3) {
+  margin-top: 0;
+}
+
+.landing-root.mob .ul {
+  display: none;
+}
+
+.landing-root.mob .lead {
+  width: auto;
+}
+
+.landing-root.mob .shot {
+  display: none;
+}
+
+.landing-root.mob .card {
+  width: auto;
+  height: auto;
+  padding: 24px 22px 26px;
+  margin-top: 28px !important;
+}
+
+.landing-root.mob .mail {
+  margin: 0 auto 6px !important;
+}
+
+.landing-root.mob .fd {
+  height: 44px;
+  margin-bottom: 14px !important;
+  position: relative !important;
+}
+
+.landing-root.mob .lb {
+  margin-bottom: 6px !important;
+}
+
+.landing-root.mob .btn {
+  height: 48px;
+  margin-top: 6px !important;
+}

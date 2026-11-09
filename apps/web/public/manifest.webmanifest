@@ -1,0 +1,13 @@
+{
+  "name": "TeamFlow",
+  "short_name": "TeamFlow",
+  "description": "Tasks, daily reports and training for your team",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0B2447",
+  "icons": [
+    { "src": "/logo.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}

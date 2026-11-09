@@ -1,0 +1,1009 @@
+// TeamFlow Prisma schema — Stage 2
+// DB: PostgreSQL 16. All money/time fields explicit. No secrets here.
+// Decisions from Q&A: teams & batches SEPARATE, reports EDITABLE, MCQ single-choice,
+// attachments = DB metadata only (files in MinIO), audit retained 1yr (purged by cron in Stage 9).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  ADMIN
+  TEAM_LEAD
+  COORDINATOR
+  EMPLOYEE
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  BLOCKED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum GoalType {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum GoalStatus {
+  ACTIVE
+  DONE
+  ARCHIVED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  DONE
+  ARCHIVED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  WORK
+  ACCESS
+  ATTENDANCE
+  TECHNICAL
+  OTHER
+}
+
+enum TrainingMaterialKind {
+  LINK
+  DOCUMENT
+  VIDEO
+  OTHER
+}
+
+enum AssessmentType {
+  QUIZ
+  TASK_BASED
+}
+
+enum AnnouncementScope {
+  COMPANY
+  TEAM
+  BATCH
+}
+
+enum ChannelType {
+  COMPANY
+  TEAM
+  BATCH
+  GROUP
+  DM
+
+  @@map("channel_type")
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_STATUS_CHANGED
+  TASK_BLOCKED
+  REVIEW_REQUESTED
+  REVIEW_DECISION
+  REPORT_MISSING
+  REPORT_REMINDER
+  MEETING_REMINDER
+  ANNOUNCEMENT
+  ASSESSMENT_ASSIGNED
+  ASSESSMENT_GRADED
+  MENTION
+  PASSWORD_RESET_REQUEST
+  ATTENDANCE
+  TASK_COMMENT
+  ATTENTION
+  SYSTEM
+  TICKET
+}
+
+enum Readiness {
+  NOT_ASSESSED
+  NOT_READY
+  DEVELOPING
+  READY
+  EXCELLENT
+}
+
+// ---------- Users / org ----------
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique @db.VarChar(255)
+  passwordHash       String    @db.Text
+  mustChangePassword Boolean   @default(true)
+  role               Role      @default(EMPLOYEE)
+  displayName        String    @db.VarChar(120)
+  isActive           Boolean   @default(true)
+  teamId             String?
+  batchId            String?
+  lastLoginAt        DateTime? @db.Timestamptz(6)
+  avatarFileId       String?
+  deactivatedAt      DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team  Team?  @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  batch Batch? @relation("BatchMembers", fields: [batchId], references: [id], onDelete: SetNull)
+
+  ledTeams           Team[]  @relation("TeamLead")
+  coordinatedTeams   Team[]  @relation("TeamCoordinator")
+  hrTeams            Team[]  @relation("TeamHR")
+  ledBatches         Batch[] @relation("BatchLead")
+  coordinatedBatches Batch[] @relation("BatchCoordinator")
+
+  createdTeams   Team[]  @relation("TeamCreator")
+  createdBatches Batch[] @relation("BatchCreator")
+
+  ownedTasks     Task[]             @relation("TaskOwner")
+  createdTasks   Task[]             @relation("TaskCreator")
+  ownedProjects  Project[]          @relation("ProjectOwner")
+  createdProjects Project[]         @relation("ProjectCreator")
+  collaborations TaskCollaborator[]
+  taskComments   TaskComment[]
+  taskActivities TaskActivity[]
+
+  dailyReports       DailyReport[]
+  attendanceDays     AttendanceDay[]     @relation("AttendanceUser")
+  breakLogs          BreakLog[]          @relation("BreakUser")
+  uploadedFiles      FileAsset[]         @relation("FileUploader")
+  channelReads       ChannelRead[]       @relation("ChannelReadUser")
+  channelMemberships ChannelMember[]     @relation("ChannelMembers")
+  trainingProgress   TrainingProgress[]
+  assessmentAttempts AssessmentAttempt[] @relation("AttemptOwner")
+  gradedAttempts     AssessmentAttempt[] @relation("AttemptGrader")
+
+  announcementsCreated Announcement[]   @relation("AnnouncementCreator")
+  goalsCreated         Goal[]           @relation("GoalCreator")
+  assessmentsCreated   Assessment[]     @relation("AssessmentCreator")
+  trainingPlansCreated TrainingPlan[]   @relation("TrainingPlanCreator")
+  channelsCreated      Channel[]        @relation("ChannelCreator")
+  channelMessages      ChannelMessage[]
+  meetingsCreated      Meeting[]        @relation("MeetingCreator")
+  meetingNotesEdited   Meeting[]        @relation("MeetingNoteEditor")
+  leavesOwned          LeaveRequest[]   @relation("LeaveOwner")
+  leavesDecided        LeaveRequest[]   @relation("LeaveDecider")
+  requestedTickets     Ticket[]         @relation("TicketRequester")
+  assignedTickets      Ticket[]         @relation("TicketAssignee")
+  resolvedTickets      Ticket[]         @relation("TicketResolver")
+  ticketMessages       TicketMessage[]
+
+  notifications   Notification[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  settingsUpdated Setting[]      @relation("SettingUpdater")
+
+  evaluationsReceived BatchEvaluation[] @relation("EvalTrainee")
+  evaluationsGiven    BatchEvaluation[] @relation("EvalEvaluator")
+
+  @@index([teamId])
+  @@index([batchId])
+  @@index([role, isActive])
+  @@map("users")
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  name          String   @unique @db.VarChar(120)
+  description   String?  @db.Text
+  leadId        String?
+  coordinatorId String?
+  hrId          String?
+  createdById   String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  lead        User?  @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
+  coordinator User?  @relation("TeamCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+  hr          User?  @relation("TeamHR", fields: [hrId], references: [id], onDelete: SetNull)
+  createdBy   User?  @relation("TeamCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  members     User[] @relation("TeamMembers")
+
+  goals         Goal[]
+  tasks         Task[]
+  projects      Project[]
+  announcements Announcement[]
+  channels      Channel[]
+  meetings      Meeting[]
+  leaveRequests LeaveRequest[]
+  tickets       Ticket[]
+
+  @@index([leadId])
+  @@index([coordinatorId])
+  @@index([hrId])
+  @@map("teams")
+}
+
+model Batch {
+  id            String   @id @default(cuid())
+  name          String   @unique @db.VarChar(120)
+  description   String?  @db.Text
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  durationDays  Int
+  isActive      Boolean  @default(true)
+  leadId        String?
+  coordinatorId String?
+  createdById   String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  lead        User?  @relation("BatchLead", fields: [leadId], references: [id], onDelete: SetNull)
+  coordinator User?  @relation("BatchCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+  createdBy   User?  @relation("BatchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  members     User[] @relation("BatchMembers")
+
+  trainingPlan  TrainingPlan?
+  assessments   Assessment[]
+  announcements Announcement[]
+  goals         Goal[]
+  tasks         Task[]
+  projects      Project[]
+  channels      Channel[]
+  dailyReports  DailyReport[]
+  evaluations   BatchEvaluation[]
+
+  @@index([startDate, endDate])
+  @@index([isActive])
+  @@index([leadId])
+  @@map("batches")
+}
+
+// ---------- Projects ----------
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String        @db.VarChar(120)
+  description String?       @db.Text
+  status      ProjectStatus @default(ACTIVE)
+  teamId      String?
+  batchId     String?
+  ownerId     String?
+  startDate   DateTime?     @db.Date
+  dueDate     DateTime?     @db.Date
+  createdById String
+  createdAt   DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(6)
+
+  team      Team?  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  batch     Batch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  owner     User?  @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy User   @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks     Task[]
+
+  @@index([teamId, status])
+  @@index([batchId])
+  @@index([ownerId])
+  @@map("projects")
+}
+
+// ---------- Issues / escalations ----------
+
+model Ticket {
+  id           String         @id @default(cuid())
+  subject      String         @db.VarChar(200)
+  description  String         @db.Text
+  category     TicketCategory @default(OTHER)
+  priority     Priority       @default(MEDIUM)
+  status       TicketStatus   @default(OPEN)
+  escalated    Boolean        @default(false)
+  requesterId  String
+  assigneeId   String?
+  teamId       String?
+  resolution   String?        @db.Text
+  resolvedById String?
+  resolvedAt   DateTime?      @db.Timestamptz(6)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(6)
+
+  requester  User           @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignee   User?          @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  resolvedBy User?          @relation("TicketResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  team       Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  messages   TicketMessage[]
+
+  @@index([status, createdAt])
+  @@index([requesterId])
+  @@index([assigneeId])
+  @@index([teamId])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+// ---------- Goals & tasks ----------
+
+model Goal {
+  id          String     @id @default(cuid())
+  title       String     @db.VarChar(200)
+  description String?    @db.Text
+  type        GoalType   @default(WEEKLY)
+  status      GoalStatus @default(ACTIVE)
+  teamId      String?
+  batchId     String?
+  startDate   DateTime?  @db.Date
+  endDate     DateTime?  @db.Date
+  createdById String
+  createdAt   DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(6)
+
+  team      Team?  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  batch     Batch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  createdBy User   @relation("GoalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks     Task[]
+
+  @@index([teamId, status])
+  @@index([batchId, status])
+  @@index([createdById])
+  @@map("goals")
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  title          String     @db.VarChar(200)
+  description    String?    @db.Text
+  goalId         String?
+  projectId      String?
+  ownerId        String
+  teamId         String
+  batchId        String?
+  priority       Priority   @default(MEDIUM)
+  status         TaskStatus @default(TODO)
+  dueDate        DateTime?  @db.Timestamptz(6)
+  /** NONE | DAILY | WEEKLY | MONTHLY — occurrences are materialized up to recurrenceUntil. */
+  recurrence     String     @default("NONE") @db.VarChar(10)
+  recurrenceUntil DateTime? @db.Date
+  /** Shared by all occurrences of a recurring task; equals the first task id. */
+  seriesId       String?
+  estimatedHours Decimal?   @db.Decimal(5, 2)
+  blockedReason  String?    @db.Text
+  reviewNote     String?    @db.Text
+  completedAt    DateTime?  @db.Timestamptz(6)
+  createdById    String
+  createdAt      DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(6)
+
+  goal      Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  owner     User     @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  team      Team   @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  batch     Batch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  collaborators TaskCollaborator[]
+  comments      TaskComment[]
+  activities    TaskActivity[]
+  reportLinks   DailyReportTask[]
+
+  files FileAsset[]
+
+  @@index([ownerId, status])
+  @@index([teamId, status])
+  @@index([status, dueDate])
+  @@index([goalId])
+  @@index([projectId])
+  @@index([batchId])
+  @@index([dueDate])
+  @@index([teamId, status, dueDate])
+  @@index([seriesId])
+  @@map("tasks")
+}
+
+model TaskCollaborator {
+  taskId    String
+  userId    String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@map("task_collaborators")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  files FileAsset[]
+
+  @@index([taskId, createdAt])
+  @@map("task_comments")
+}
+
+model TaskActivity {
+  id         String      @id @default(cuid())
+  taskId     String
+  actorId    String
+  action     String      @db.VarChar(60)
+  fromStatus TaskStatus?
+  toStatus   TaskStatus?
+  detail     Json?
+  createdAt  DateTime    @default(now()) @db.Timestamptz(6)
+
+  task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt])
+  @@index([actorId])
+  @@map("task_activities")
+}
+
+// ---------- Daily reports ----------
+
+model DailyReport {
+  id           String   @id @default(cuid())
+  userId       String
+  teamId       String
+  batchId      String?
+  reportDate   DateTime @db.Date
+  didToday     String   @db.Text
+  blockers     String?  @db.Text
+  planTomorrow String   @db.Text
+  hoursWorked  Decimal  @default(0) @db.Decimal(4, 1)
+  isLate       Boolean  @default(false)
+  submittedAt  DateTime @default(now()) @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch     Batch?            @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  taskLinks DailyReportTask[]
+  files     FileAsset[]
+
+  @@unique([userId, reportDate])
+  @@index([reportDate])
+  @@index([teamId, reportDate])
+  @@index([userId, reportDate])
+  @@map("daily_reports")
+}
+
+model DailyReportTask {
+  reportId String
+  taskId   String
+
+  report DailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([reportId, taskId])
+  @@index([taskId])
+  @@map("daily_report_tasks")
+}
+
+// ---------- Training ----------
+
+model TrainingPlan {
+  id          String   @id @default(cuid())
+  batchId     String   @unique
+  title       String   @db.VarChar(200)
+  description String?  @db.Text
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  batch     Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("TrainingPlanCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items     TrainingItem[]
+
+  @@map("training_plans")
+}
+
+model TrainingItem {
+  id             String   @id @default(cuid())
+  planId         String
+  dayNumber      Int
+  weekNumber     Int?
+  topic          String   @db.VarChar(200)
+  description    String?  @db.Text
+  practiceTask   String?  @db.Text
+  expectedOutput String?  @db.Text
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  plan      TrainingPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  materials TrainingMaterial[]
+  progress  TrainingProgress[]
+
+  @@unique([planId, dayNumber])
+  @@index([planId, sortOrder])
+  @@map("training_items")
+}
+
+model TrainingMaterial {
+  id             String               @id @default(cuid())
+  trainingItemId String
+  kind           TrainingMaterialKind @default(LINK)
+  title          String               @db.VarChar(200)
+  url            String?              @db.VarChar(2000)
+  fileKey        String?              @db.VarChar(500)
+  sortOrder      Int                  @default(0)
+
+  item TrainingItem @relation(fields: [trainingItemId], references: [id], onDelete: Cascade)
+
+  @@index([trainingItemId, sortOrder])
+  @@map("training_materials")
+}
+
+model TrainingProgress {
+  userId         String
+  trainingItemId String
+  isDone         Boolean   @default(false)
+  completedAt    DateTime? @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item TrainingItem @relation(fields: [trainingItemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, trainingItemId])
+  @@index([trainingItemId])
+  @@map("training_progress")
+}
+
+// ---------- Assessments ----------
+
+model Assessment {
+  id          String         @id @default(cuid())
+  batchId     String
+  title       String         @db.VarChar(200)
+  description String?        @db.Text
+  type        AssessmentType @default(QUIZ)
+  weekNumber  Int?
+  maxScore    Int            @default(100)
+  dueDate     DateTime?      @db.Timestamptz(6)
+  createdById String
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
+
+  batch     Batch                @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdBy User                 @relation("AssessmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  questions AssessmentQuestion[]
+  attempts  AssessmentAttempt[]
+
+  @@index([batchId])
+  @@map("assessments")
+}
+
+model AssessmentQuestion {
+  id           String @id @default(cuid())
+  assessmentId String
+  prompt       String @db.Text
+  options      Json?
+  correctIndex Int?
+  points       Int    @default(1)
+  sortOrder    Int    @default(0)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId, sortOrder])
+  @@map("assessment_questions")
+}
+
+model AssessmentAttempt {
+  id           String    @id @default(cuid())
+  assessmentId String
+  userId       String
+  answers      Json?
+  score        Decimal?  @db.Decimal(6, 2)
+  maxScore     Int
+  isGraded     Boolean   @default(false)
+  gradedById   String?
+  remarks      String?   @db.Text
+  submittedAt  DateTime  @default(now()) @db.Timestamptz(6)
+  gradedAt     DateTime? @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User       @relation("AttemptOwner", fields: [userId], references: [id], onDelete: Cascade)
+  gradedBy   User?      @relation("AttemptGrader", fields: [gradedById], references: [id], onDelete: SetNull)
+
+  @@index([assessmentId, userId])
+  @@index([userId])
+  @@map("assessment_attempts")
+}
+
+// ---------- Communication ----------
+
+model Announcement {
+  id          String            @id @default(cuid())
+  title       String            @db.VarChar(200)
+  body        String            @db.Text
+  scope       AnnouncementScope @default(COMPANY)
+  teamId      String?
+  batchId     String?
+  createdById String
+  createdAt   DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(6)
+
+  team      Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  batch     Batch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("AnnouncementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  files FileAsset[]
+
+  @@index([scope, createdAt])
+  @@index([teamId])
+  @@index([batchId])
+  @@map("announcements")
+}
+
+model Channel {
+  id          String      @id @default(cuid())
+  type        ChannelType @default(TEAM)
+  teamId      String?
+  batchId     String?
+  name        String      @db.VarChar(80)
+  description String?     @db.Text
+  createdById String
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+
+  team      Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  batch     Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  messages  ChannelMessage[]
+  reads     ChannelRead[]
+  members   ChannelMember[]
+
+  @@unique([teamId, name])
+  @@unique([batchId, name])
+  @@index([teamId])
+  @@index([batchId])
+  @@index([type])
+  @@map("channels")
+}
+
+/** Explicit membership for GROUP chats and DMs. Team/batch/company channels are open to their scope. */
+model ChannelMember {
+  channelId String
+  userId    String
+  joinedAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation("ChannelMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+model ChannelMessage {
+  id        String    @id @default(cuid())
+  channelId String
+  authorId  String
+  body      String    @db.Text
+  clientId  String?   @db.VarChar(40)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  channel Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  files   FileAsset[]
+
+  @@unique([authorId, clientId])
+  @@index([channelId, createdAt])
+  @@map("channel_messages")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String           @db.VarChar(200)
+  body      String?          @db.Text
+  link      String?          @db.VarChar(500)
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
+  @@index([isRead, createdAt])
+  @@map("notifications")
+}
+
+// ---------- Auth / audit / settings ----------
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.VarChar(255)
+  expiresAt DateTime  @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+  ip        String?   @db.VarChar(45)
+  userAgent String?   @db.VarChar(500)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String   @db.VarChar(60)
+  entity    String   @db.VarChar(60)
+  entityId  String?  @db.VarChar(100)
+  metadata  Json?
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model Setting {
+  key         String   @id @db.VarChar(80)
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy User? @relation("SettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("settings")
+}
+
+model BatchEvaluation {
+  id                String    @id @default(cuid())
+  batchId           String
+  userId            String
+  attendancePct     Float?    @default(0)
+  taskCompletionPct Float?    @default(0)
+  avgScore          Float?    @default(0)
+  remarks           String?   @db.Text
+  readiness         Readiness @default(NOT_ASSESSED)
+  evaluatedById     String?
+  evaluatedAt       DateTime? @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  batch       Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user        User  @relation("EvalTrainee", fields: [userId], references: [id], onDelete: Cascade)
+  evaluatedBy User? @relation("EvalEvaluator", fields: [evaluatedById], references: [id], onDelete: SetNull)
+
+  @@unique([batchId, userId])
+  @@index([batchId])
+  @@map("batch_evaluations")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum WorkMode {
+  OFFICE
+  REMOTE
+}
+
+enum BreakReason {
+  LUNCH
+  TEA
+  PERSONAL
+  OTHER
+}
+
+enum FileContext {
+  AVATAR
+  TASK
+  COMMENT
+  CHANNEL
+  REPORT
+  ANNOUNCEMENT
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// A scheduled video meeting. teamId null = company-wide. Join from the dashboard.
+model Meeting {
+  id          String   @id @default(cuid())
+  teamId      String?
+  title       String   @db.VarChar(200)
+  meetUrl     String   @db.VarChar(2000)
+  startsAt    DateTime @db.Timestamptz(6)
+  endsAt      DateTime? @db.Timestamptz(6)
+  recurrence  String   @default("NONE") @db.VarChar(10)
+  /// COMPANY | TEAM | LEADS | USERS — who should attend.
+  audience    String   @default("TEAM") @db.VarChar(10)
+  /// Explicit attendees for audience = USERS.
+  attendeeIds String[] @default([])
+  parentId    String?
+  note        String?  @db.Text
+  noteUpdatedAt DateTime? @db.Timestamptz(6)
+  noteUpdatedById String?
+  noteUpdatedBy User? @relation("MeetingNoteEditor", fields: [noteUpdatedById], references: [id], onDelete: SetNull)
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  team      Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([teamId, startsAt])
+  @@index([startsAt])
+  @@map("meetings")
+}
+
+/// Leave request for everyone. Approved days are marked ON_LEAVE on the attendance record.
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  userId      String
+  teamId      String?
+  fromDate    DateTime    @db.Date
+  toDate      DateTime    @db.Date
+  reason      String      @db.VarChar(1000)
+  status      LeaveStatus @default(PENDING)
+  decidedById String?
+  decidedAt   DateTime?   @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(6)
+
+  user      User  @relation("LeaveOwner", fields: [userId], references: [id], onDelete: Cascade)
+  team      Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  decidedBy User? @relation("LeaveDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([teamId, status])
+  @@index([status, createdAt])
+  @@map("leave_requests")
+}
+
+/// Every uploaded file (any type). Bytes live on disk (uploads volume); this row is the index + permissions anchor.
+model FileAsset {
+  id             String      @id @default(cuid())
+  uploaderId     String
+  context        FileContext
+  scopeId        String? /// task id / channel id the upload was made for (authorises pending files)
+  name           String      @db.VarChar(255)
+  mime           String      @db.VarChar(120)
+  size           Int
+  sha256         String      @db.VarChar(64)
+  storageKey     String      @unique @db.VarChar(200)
+  width          Int?
+  height         Int?
+  taskId         String?
+  commentId      String?
+  messageId      String?
+  reportId       String?
+  announcementId String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  deletedAt      DateTime?   @db.Timestamptz(6)
+
+  uploader     User            @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  task         Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  comment      TaskComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  message      ChannelMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  report       DailyReport?    @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  announcement Announcement?   @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([commentId])
+  @@index([messageId])
+  @@index([reportId])
+  @@index([announcementId])
+  @@index([uploaderId, createdAt])
+  @@index([context, createdAt])
+  @@map("files")
+}
+
+/// One row per person per calendar day (company timezone).
+model AttendanceDay {
+  id            String           @id @default(cuid())
+  userId        String
+  day           DateTime         @db.Date
+  teamId        String?
+  batchId       String?
+  status        AttendanceStatus @default(PRESENT)
+  mode          WorkMode         @default(OFFICE)
+  checkInAt     DateTime?        @db.Timestamptz(6)
+  checkOutAt    DateTime?        @db.Timestamptz(6)
+  lateMinutes   Int              @default(0)
+  workedMinutes Int              @default(0)
+  breakMinutes  Int              @default(0)
+  note          String?          @db.VarChar(500)
+  checkOutNote  String?          @db.VarChar(500)
+  autoClosed    Boolean          @default(false)
+  editedById    String?
+  editReason    String?          @db.VarChar(500)
+  checkInIp     String?          @db.VarChar(64)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+
+  user   User       @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  breaks BreakLog[]
+
+  @@unique([userId, day])
+  @@index([day, teamId])
+  @@index([day, status])
+  @@map("attendance_days")
+}
+
+model BreakLog {
+  id           String      @id @default(cuid())
+  attendanceId String
+  userId       String
+  reason       BreakReason @default(PERSONAL)
+  note         String?     @db.VarChar(300)
+  startAt      DateTime    @db.Timestamptz(6)
+  endAt        DateTime?   @db.Timestamptz(6)
+  autoEnded    Boolean     @default(false)
+  overNotified Boolean     @default(false)
+
+  attendance AttendanceDay @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  user       User          @relation("BreakUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+  @@index([userId, startAt])
+  @@index([endAt])
+  @@map("break_logs")
+}
+
+/// Per-person read marker for each chat channel (drives unread badges without loading messages).
+model ChannelRead {
+  userId     String
+  channelId  String
+  lastReadAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user    User    @relation("ChannelReadUser", fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([userId, channelId])
+  @@map("channel_reads")
+}

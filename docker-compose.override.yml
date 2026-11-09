@@ -1,0 +1,11 @@
+# Local-only ports so the HOST nginx (not the compose nginx service) serves TeamFlow.
+# Uploads live on the host (www-data readable) instead of inside /var/lib/docker.
+services:
+  api:
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - /srv/teamflow-uploads:/data/uploads
+  web:
+    ports:
+      - "127.0.0.1:3001:3000"

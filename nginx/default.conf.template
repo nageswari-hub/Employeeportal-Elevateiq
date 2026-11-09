@@ -1,0 +1,129 @@
+# TeamFlow Nginx — mounted as /etc/nginx/templates/default.conf.template.
+# The official image runs envsubst on it (APP_DOMAIN) and drops it into conf.d, i.e. INSIDE http {}.
+# So this file holds only http-level directives + server blocks (no events/http wrappers).
+
+limit_req_zone $binary_remote_addr zone=login:10m rate=30r/m;   # per IP; whole offices share one IP, per-account lock is in the API
+limit_req_zone $binary_remote_addr zone=api:10m rate=3000r/m;   # DDoS backstop only; real limits are per signed-in user in the API
+limit_req_status 429;
+
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+upstream web { server web:3000; keepalive 16; }
+upstream api { server api:4000; keepalive 32; }
+
+server_tokens off;
+client_max_body_size 2m;
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_proxied any;
+gzip_vary on;
+gzip_types text/plain text/css text/csv application/json application/javascript text/javascript image/svg+xml application/manifest+json;
+
+# --- port 80: ACME challenge + redirect everything else to HTTPS ---
+server {
+  listen 80;
+  server_name _;
+  location /.well-known/acme-challenge/ { root /var/www/certbot; }
+  location / { return 301 https://${APP_DOMAIN}$request_uri; }
+}
+
+# --- port 443: the app ---
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${APP_DOMAIN};
+
+  ssl_certificate     /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${APP_DOMAIN}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_session_cache shared:SSL:10m;
+  ssl_session_timeout 1d;
+  ssl_session_tickets off;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options SAMEORIGIN always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://${APP_DOMAIN}; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+
+  proxy_http_version 1.1;
+  proxy_set_header Connection "";
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $remote_addr;   # overwrite, never append: clients cannot spoof their IP
+  proxy_set_header X-Forwarded-Proto https;
+
+  # Browser -> API goes straight through Nginx (skips the extra Next.js hop = faster, and rate limits actually apply)
+  location = /backend/auth/login {
+    limit_req zone=login burst=40 nodelay;
+    rewrite ^/backend/(.*)$ /api/$1 break;
+    proxy_pass http://api;
+  }
+  # File uploads: streamed straight to the API (no temp copy in Nginx), big body allowed, long timeout for slow connections
+  location = /backend/files {
+    limit_req zone=api burst=50 nodelay;
+    client_max_body_size 110m;
+    client_body_timeout 600s;
+    proxy_request_buffering off;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+    rewrite ^/backend/(.*)$ /api/$1 break;
+    proxy_pass http://api;
+  }
+  location = /backend/avatars/me {
+    limit_req zone=api burst=20 nodelay;
+    client_max_body_size 2m;
+    proxy_request_buffering off;
+    rewrite ^/backend/(.*)$ /api/$1 break;
+    proxy_pass http://api;
+  }
+
+  # Protected file delivery: the API checks permission, then hands the bytes to Nginx (X-Accel-Redirect).
+  # Nginx serves them with sendfile + HTTP range support (video/audio seeking, resumable downloads) and Node stays free for chat.
+  location /_protected/ {
+    internal;
+    alias /data/uploads/;
+    sendfile on;
+    tcp_nopush on;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  }
+
+  location /backend/ {
+    limit_req zone=api burst=300 nodelay;
+    rewrite ^/backend/(.*)$ /api/$1 break;
+    proxy_pass http://api;
+    proxy_read_timeout 60s;
+  }
+  location /api/ {
+    limit_req zone=api burst=300 nodelay;
+    proxy_pass http://api;
+  }
+
+  # WebSocket + polling for Socket.io
+  location /socket.io/ {
+    proxy_pass http://api;
+    # a location that sets ANY proxy_set_header drops the inherited ones, so repeat them all here
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+  }
+
+  # Immutable build assets: let browsers cache them for a year
+  location /_next/static/ {
+    proxy_pass http://web;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+  }
+
+  location / {
+    proxy_pass http://web;
+  }
+}
